@@ -1,11 +1,11 @@
-mod utils;
+pub mod utils;
 
 pub use device_query::Keycode;
 use device_query::{DeviceQuery, DeviceState};
 use tokio::time::{self, Duration, Instant};
 
 /// An enum representing the state of Kap
-
+///
 #[derive(Debug)]
 enum KapState {
   Start,
@@ -21,7 +21,7 @@ impl Default for KapState {
 }
 
 /// An enum that groups keycodes
-
+///
 pub enum Keygroup {
   Number,
   Alphabet,
