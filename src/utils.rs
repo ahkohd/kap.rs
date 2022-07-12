@@ -10,7 +10,7 @@ fn normalize_keycode(key: Keycode) -> String {
   key
 }
 
-pub fn assert_keycode_equals(first: Vec<Keycode>, second: Vec<Keycode>) -> bool {
+pub fn assert_keycode_equals(first: &[Keycode], second: &[Keycode]) -> bool {
   if first.len() != second.len() {
     return false;
   }
@@ -25,4 +25,17 @@ pub fn assert_keycode_equals(first: Vec<Keycode>, second: Vec<Keycode>) -> bool 
     .collect::<Vec<String>>();
 
   first.iter().all(|key| second.contains(key))
+}
+
+pub fn assert_keycode_equals_any(group: &[Keycode], other: &[Keycode]) -> bool {
+  let group = group
+    .iter()
+    .map(|key| normalize_keycode(*key))
+    .collect::<Vec<String>>();
+  let other = other
+    .iter()
+    .map(|key| normalize_keycode(*key))
+    .collect::<Vec<String>>();
+
+  other.iter().any(|key| group.contains(key))
 }
