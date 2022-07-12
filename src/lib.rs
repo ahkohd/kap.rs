@@ -275,81 +275,75 @@ impl Kap {
   }
 
   pub async fn until(&mut self, values: &[KapValue]) -> &mut Self {
-    if let KapState::Done = self.state {
-      return self;
+    if let KapState::Next = self.state {
+      let device_state = DeviceState::new();
+
+      self
+        .on_keydown(&device_state, |kap| {
+          let keys = device_state.get_keys();
+          if values.iter().any(|value| value.test(&keys)) {
+            kap.state = KapState::Next;
+            kap.record_value(device_state.get_keys().to_vec());
+            return true;
+          }
+
+          false
+        })
+        .await;
     }
-
-    let device_state = DeviceState::new();
-
-    self
-      .on_keydown(&device_state, |kap| {
-        let keys = device_state.get_keys();
-        if values.iter().any(|value| value.test(&keys)) {
-          kap.state = KapState::Next;
-          kap.record_value(device_state.get_keys().to_vec());
-          return true;
-        }
-
-        false
-      })
-      .await;
 
     self
   }
 
   pub async fn any(&mut self) -> &mut Self {
-    if let KapState::Done = self.state {
-      return self;
+    if let KapState::Next = self.state {
+      let device_state = DeviceState::new();
+
+      self
+        .on_keydown(&device_state, |kap| {
+          let keys = device_state.get_keys();
+
+          if !keys.is_empty() {
+            kap.state = KapState::Next;
+            kap.record_value(keys);
+            return true;
+          }
+
+          false
+        })
+        .await;
     }
-
-    let device_state = DeviceState::new();
-
-    self
-      .on_keydown(&device_state, |kap| {
-        let keys = device_state.get_keys();
-
-        if !keys.is_empty() {
-          kap.state = KapState::Next;
-          kap.record_value(keys);
-          return true;
-        }
-
-        false
-      })
-      .await;
 
     self
   }
 
   pub async fn within(&mut self, timeout: Duration, others: &[KapValue]) -> &mut Self {
-    if let KapState::Done = self.state {
-      return self;
+    if let KapState::Next = self.state {
+      let device_state = DeviceState::new();
+      let start = Instant::now();
+
+      self
+        .on_keydown(&device_state, |kap| {
+          if start.elapsed() >= timeout {
+            kap.state = KapState::Fail;
+            return true;
+          }
+
+          if kap.is_keydown() {
+            let keys = device_state.get_keys();
+            kap.state = if others.iter().any(|other| other.test(&keys)) {
+              KapState::Next
+            } else {
+              KapState::Fail
+            };
+            kap.record_value(keys.to_vec());
+            return true;
+          }
+
+          false
+        })
+        .await;
     }
-
-    let device_state = DeviceState::new();
-    let start = Instant::now();
-
-    self
-      .on_keydown(&device_state, |kap| {
-        if start.elapsed() >= timeout {
-          kap.state = KapState::Fail;
-          return true;
-        }
-
-        if kap.is_keydown() {
-          let keys = device_state.get_keys();
-          kap.state = if others.iter().any(|other| other.test(&keys)) {
-            KapState::Next
-          } else {
-            KapState::Fail
-          };
-          kap.record_value(keys.to_vec());
-          return true;
-        }
-
-        false
-      })
-      .await;
 
     self
   }
