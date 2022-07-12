@@ -249,17 +249,29 @@ impl Kap {
     self
   }
 
-  fn on_keydown<F>(&mut self, device_state: &DeviceState, cb: F)
+  async fn on_keydown<F>(&mut self, device_state: &DeviceState, test: F)
   where
-    F: Fn(&mut Self),
+    F: Fn(&mut Self) -> bool,
   {
     let is_keydown_clone = self.is_keydown.clone();
     let _guard = device_state.on_key_down(move |_| is_keydown_clone.store(true, Ordering::Relaxed));
-    cb(self);
+    let mut interval = time::interval(Duration::from_millis(10));
+
+    loop {
+      interval.tick().await;
+
+      if self.is_keydown() && test(self) {
+        break;
+      }
+
+      self.is_keydown.store(false, Ordering::Relaxed);
+    }
+
+    self.is_keydown.store(false, Ordering::Relaxed);
   }
 
   fn is_keydown(&self) -> bool {
-    self.is_keydown.load(Ordering::Relaxed).eq(&true)
+    self.is_keydown.load(Ordering::Relaxed)
   }
 
   pub async fn until(&mut self, values: &[KapValue]) -> &mut Self {
@@ -269,18 +281,18 @@ impl Kap {
 
     let device_state = DeviceState::new();
 
-    self.on_keydown(&device_state, |kap| loop {
-      if kap.is_keydown() {
+    self
+      .on_keydown(&device_state, |kap| {
         let keys = device_state.get_keys();
         if values.iter().any(|value| value.test(&keys)) {
           kap.state = KapState::Next;
           kap.record_value(device_state.get_keys().to_vec());
-          break;
-        } else {
-          kap.is_keydown.store(false, Ordering::Relaxed);
+          return true;
         }
-      }
-    });
+
+        false
+      })
+      .await;
 
     self
   }
@@ -292,17 +304,19 @@ impl Kap {
 
     let device_state = DeviceState::new();
 
-    self.on_keydown(&device_state, |kap| loop {
-      if kap.is_keydown() {
+    self
+      .on_keydown(&device_state, |kap| {
         let keys = device_state.get_keys();
 
         if !keys.is_empty() {
           kap.state = KapState::Next;
           kap.record_value(keys);
-          break;
+          return true;
         }
-      }
-    });
+
+        false
+      })
+      .await;
 
     self
   }
@@ -315,23 +329,27 @@ impl Kap {
     let device_state = DeviceState::new();
     let start = Instant::now();
 
-    self.on_keydown(&device_state, |kap| loop {
-      if start.elapsed() >= timeout {
-        kap.state = KapState::Fail;
-        break;
-      }
+    self
+      .on_keydown(&device_state, |kap| {
+        if start.elapsed() >= timeout {
+          kap.state = KapState::Fail;
+          return true;
+        }
 
-      if kap.is_keydown() {
-        let keys = device_state.get_keys();
-        kap.state = if others.iter().any(|other| other.test(&keys)) {
-          KapState::Next
-        } else {
-          KapState::Fail
-        };
-        kap.record_value(keys.to_vec());
-        break;
-      }
-    });
+        if kap.is_keydown() {
+          let keys = device_state.get_keys();
+          kap.state = if others.iter().any(|other| other.test(&keys)) {
+            KapState::Next
+          } else {
+            KapState::Fail
+          };
+          kap.record_value(keys.to_vec());
+          return true;
+        }
+
+        false
+      })
+      .await;
 
     self
   }
