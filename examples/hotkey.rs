@@ -7,25 +7,29 @@ async fn main() {
     println!("Press Cmd+Shift+A");
 
     Kap::new()
-      .until(KapValue::from_keys(vec![
+      .until(&[KapValue::from_keys(vec![
         Keycode::Meta,
         Keycode::LShift,
         Keycode::A,
-      ]))
+      ])])
       .await
-      .task(clear)
-      .task(|| println!("Nice! Then press <Esc>"))
+      .task(|_| {
+        clear();
+        println!("Nice! Then press <Esc>");
+      })
       .within(
         Duration::from_secs_f32(1.0),
-        KapValue::from(Keycode::Escape),
+        &[KapValue::from(Keycode::Escape)],
       )
       .await
-      .task(clear)
-      .task(|| println!("Let's fucking go!"))
-      .catch(|| println!("Too slow, try again!"))
+      .task(|_| {
+        clear();
+        println!("Let's fucking go!");
+      })
+      .catch(|_| println!("Too slow, try again!"))
       .sleep(Duration::from_secs_f32(1.0))
       .await
-      .finally(clear);
+      .finally(|_| clear());
   }
 }
 

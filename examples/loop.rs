@@ -9,12 +9,12 @@ async fn main() {
 
   loop {
     Kap::new()
-      .until(KapValue::from(Keycode::A))
+      .until(&[KapValue::from(Keycode::A)])
       .await
-      .task(|| println!("[info]: Pressed A"))
+      .task(|_| println!("[info]: Pressed A"))
       .sleep(Duration::from_millis(500))
       .await
-      .finally(|| {
+      .finally(|_| {
         println!("[info]: Done");
       });
   }

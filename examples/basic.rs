@@ -6,10 +6,10 @@ async fn main() {
   println!("[info]: Basic example, press A");
 
   Kap::new()
-    .until(KapValue::from(Keycode::A))
+    .until(&[KapValue::from(Keycode::A)])
     .await
-    .task(|| println!("[info]: Pressed A"))
-    .finally(|| {
+    .task(|_| println!("[info]: Pressed A"))
+    .finally(|_| {
       println!("[info]: Done");
     });
 }
