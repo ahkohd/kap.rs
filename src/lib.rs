@@ -259,7 +259,7 @@ impl Kap {
     loop {
       interval.tick().await;
 
-      if self.is_keydown() && test(self) {
+      if test(self) {
         break;
       }
 
@@ -279,11 +279,13 @@ impl Kap {
 
       self
         .on_keydown(&device_state, |kap| {
-          let keys = device_state.get_keys();
-          if values.iter().any(|value| value.test(&keys)) {
-            kap.state = KapState::Next;
-            kap.record_value(device_state.get_keys().to_vec());
-            return true;
+          if kap.is_keydown() {
+            let keys = device_state.get_keys();
+            if values.iter().any(|value| value.test(&keys)) {
+              kap.state = KapState::Next;
+              kap.record_value(device_state.get_keys().to_vec());
+              return true;
+            }
           }
 
           false
@@ -300,12 +302,14 @@ impl Kap {
 
       self
         .on_keydown(&device_state, |kap| {
-          let keys = device_state.get_keys();
+          if kap.is_keydown() {
+            let keys = device_state.get_keys();
 
-          if !keys.is_empty() {
-            kap.state = KapState::Next;
-            kap.record_value(keys);
-            return true;
+            if !keys.is_empty() {
+              kap.state = KapState::Next;
+              kap.record_value(keys);
+              return true;
+            }
           }
 
           false
