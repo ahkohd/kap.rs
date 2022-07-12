@@ -13,7 +13,6 @@ use tokio::time::{self, Duration, Instant};
 ///
 #[derive(Debug)]
 enum KapState {
-  Start,
   Fail,
   Next,
   Done,
@@ -21,7 +20,7 @@ enum KapState {
 
 impl Default for KapState {
   fn default() -> Self {
-    KapState::Start
+    KapState::Next
   }
 }
 
