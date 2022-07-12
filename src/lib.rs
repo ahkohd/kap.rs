@@ -272,7 +272,6 @@ impl Kap {
     self.on_keydown(&device_state, |kap| loop {
       if kap.is_keydown() {
         let keys = device_state.get_keys();
-
         if values.iter().any(|value| value.test(&keys)) {
           kap.state = KapState::Next;
           kap.record_value(device_state.get_keys().to_vec());
