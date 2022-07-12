@@ -1,7 +1,12 @@
 pub mod utils;
 
+use std::sync::{
+  atomic::{AtomicBool, Ordering},
+  Arc,
+};
+
 pub use device_query::Keycode;
-use device_query::{DeviceQuery, DeviceState};
+use device_query::{DeviceEvents, DeviceQuery, DeviceState};
 use tokio::time::{self, Duration, Instant};
 
 /// An enum representing the state of Kap
@@ -212,16 +217,11 @@ impl KapValue {
 
 type KeycodesRecord = Vec<Vec<Keycode>>;
 
-#[derive(Debug, Default)]
-pub struct KapConfig {
-  loop_delay: Duration,
-}
-
 #[derive(Debug)]
 pub struct Kap {
   state: KapState,
   keycodes: KeycodesRecord,
-  config: KapConfig,
+  is_keydown: Arc<AtomicBool>,
 }
 
 impl Default for Kap {
@@ -229,9 +229,7 @@ impl Default for Kap {
     Kap {
       state: KapState::default(),
       keycodes: KeycodesRecord::default(),
-      config: KapConfig {
-        loop_delay: Duration::from_millis(50),
-      },
+      is_keydown: Arc::new(AtomicBool::new(false)),
     }
   }
 }
@@ -245,14 +243,23 @@ impl Kap {
     self.keycodes.push(value);
   }
 
-  pub fn config(&mut self, config: KapConfig) {
-    self.config = config;
-  }
-
   pub async fn sleep(&mut self, duration: Duration) -> &mut Self {
     self.state = KapState::Next;
     time::sleep(duration).await;
     self
+  }
+
+  fn on_keydown<F>(&mut self, device_state: &DeviceState, cb: F)
+  where
+    F: Fn(&mut Self),
+  {
+    let is_keydown_clone = self.is_keydown.clone();
+    let _guard = device_state.on_key_down(move |_| is_keydown_clone.store(true, Ordering::Relaxed));
+    cb(self);
+  }
+
+  fn is_keydown(&self) -> bool {
+    self.is_keydown.load(Ordering::Relaxed).eq(&true)
   }
 
   pub async fn until(&mut self, values: &[KapValue]) -> &mut Self {
@@ -261,17 +268,22 @@ impl Kap {
     }
 
     let device_state = DeviceState::new();
-    let mut interval = time::interval(self.config.loop_delay);
 
-    loop {
-      interval.tick().await;
-      let keys = device_state.get_keys();
-      if values.iter().any(|value| value.test(&keys)) {
-        self.state = KapState::Next;
-        self.record_value(keys);
-        return self;
+    self.on_keydown(&device_state, |kap| loop {
+      if kap.is_keydown() {
+        let keys = device_state.get_keys();
+
+        if values.iter().any(|value| value.test(&keys)) {
+          kap.state = KapState::Next;
+          kap.record_value(device_state.get_keys().to_vec());
+          break;
+        } else {
+          kap.is_keydown.store(false, Ordering::Relaxed);
+        }
       }
-    }
+    });
+
+    self
   }
 
   pub async fn any(&mut self) -> &mut Self {
@@ -280,18 +292,18 @@ impl Kap {
     }
 
     let device_state = DeviceState::new();
-    let mut interval = time::interval(self.config.loop_delay);
 
-    loop {
-      interval.tick().await;
-      let keys = device_state.get_keys();
+    self.on_keydown(&device_state, |kap| loop {
+      if kap.is_keydown() {
+        let keys = device_state.get_keys();
 
-      if !keys.is_empty() {
-        self.state = KapState::Next;
-        self.record_value(keys);
-        break;
+        if !keys.is_empty() {
+          kap.state = KapState::Next;
+          kap.record_value(keys);
+          break;
+        }
       }
-    }
+    });
 
     self
   }
@@ -302,30 +314,26 @@ impl Kap {
     }
 
     let device_state = DeviceState::new();
-    let mut interval = time::interval(self.config.loop_delay);
     let start = Instant::now();
 
-    let check = loop {
-      interval.tick().await;
-
+    self.on_keydown(&device_state, |kap| loop {
       if start.elapsed() >= timeout {
-        break false;
+        kap.state = KapState::Fail;
+        break;
       }
 
-      let keys = device_state.get_keys();
-
-      if others.iter().any(|other| other.test(&keys)) {
-        break true;
+      if kap.is_keydown() {
+        let keys = device_state.get_keys();
+        kap.state = if others.iter().any(|other| other.test(&keys)) {
+          KapState::Next
+        } else {
+          KapState::Fail
+        };
+        kap.record_value(keys.to_vec());
+        break;
       }
-    };
+    });
 
-    self.state = if check {
-      KapState::Next
-    } else {
-      KapState::Fail
-    };
-
-    self.record_value(device_state.get_keys());
     self
   }
 
