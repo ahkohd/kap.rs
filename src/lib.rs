@@ -428,6 +428,7 @@ impl Kap {
   {
     if let KapState::Fail = self.state {
       callback(self.keycodes.clone());
+      self.state = KapState::Next;
     }
 
     self
