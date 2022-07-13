@@ -248,9 +248,9 @@ impl Kap {
     self
   }
 
-  async fn on_keydown<F>(&mut self, device_state: &DeviceState, test: F)
+  async fn on_keydown<F>(&mut self, device_state: &DeviceState, mut test: F)
   where
-    F: Fn(&mut Self) -> bool,
+    F: FnMut(&mut Self) -> bool,
   {
     let is_keydown_clone = self.is_keydown.clone();
     let _guard = device_state.on_key_down(move |_| is_keydown_clone.store(true, Ordering::Relaxed));
@@ -273,18 +273,24 @@ impl Kap {
     self.is_keydown.load(Ordering::Relaxed)
   }
 
-  pub async fn until(&mut self, values: &[KapValue]) -> &mut Self {
+  pub async fn until(&mut self, values: &[KapValue], repeat: usize) -> &mut Self {
     if let KapState::Next = self.state {
       let device_state = DeviceState::new();
+      let mut captured_keys: Vec<Keycode> = vec![];
 
       self
         .on_keydown(&device_state, |kap| {
           if kap.is_keydown() {
             let keys = device_state.get_keys();
+
             if values.iter().any(|value| value.test(&keys)) {
-              kap.state = KapState::Next;
-              kap.record_value(device_state.get_keys().to_vec());
-              return true;
+              captured_keys.append(&mut device_state.get_keys());
+
+              if captured_keys.len() >= repeat {
+                kap.state = KapState::Next;
+                kap.record_value(captured_keys.clone());
+                return true;
+              }
             }
           }
 
@@ -320,27 +326,56 @@ impl Kap {
     self
   }
 
-  pub async fn within(&mut self, timeout: Duration, others: &[KapValue]) -> &mut Self {
+  pub async fn within(
+    &mut self,
+    timeout: Duration,
+    others: &[KapValue],
+    max_repeat: usize,
+    debounce: bool,
+  ) -> &mut Self {
     if let KapState::Next = self.state {
       let device_state = DeviceState::new();
-      let start = Instant::now();
+      let mut start = Instant::now();
+      let mut captured_keys: Vec<Keycode> = vec![];
 
+      // Capture keypress of characters in the set until the length
+      // of the captured keypresses is greater than or equals
+      // to max_repeat or the timeout is elapsed.
+      // (debounce -> true) Restart timer on every valid  keypress.
+      //
+      // If user types a character that's not in set, abort!
+      //
       self
         .on_keydown(&device_state, |kap| {
-          if start.elapsed() >= timeout {
-            kap.state = KapState::Fail;
-            return true;
-          }
-
-          if kap.is_keydown() {
-            let keys = device_state.get_keys();
-            kap.state = if others.iter().any(|other| other.test(&keys)) {
+          if start.elapsed() >= timeout || captured_keys.len() >= max_repeat {
+            kap.state = if !captured_keys.is_empty() {
               KapState::Next
             } else {
               KapState::Fail
             };
-            kap.record_value(keys.to_vec());
+
+            if !captured_keys.is_empty() {
+              kap.record_value(captured_keys.clone());
+            }
+
             return true;
+          }
+
+          if kap.is_keydown() {
+            let mut keys = device_state.get_keys();
+
+            if others.iter().any(|other| other.test(&keys)) {
+              captured_keys.append(&mut keys);
+
+              if debounce {
+                start = Instant::now();
+              }
+            } else {
+              kap.state = KapState::Fail;
+              captured_keys.append(&mut keys);
+              kap.record_value(captured_keys.clone());
+              return true;
+            }
           }
 
           false
@@ -351,9 +386,14 @@ impl Kap {
     self
   }
 
-  pub async fn after(&mut self, timeout: Duration, others: &[KapValue]) -> &mut Self {
+  pub async fn after(
+    &mut self,
+    timeout: Duration,
+    others: &[KapValue],
+    repeat: usize,
+  ) -> &mut Self {
     self.sleep(timeout).await;
-    self.until(others).await;
+    self.until(others, repeat).await;
     self
   }
 

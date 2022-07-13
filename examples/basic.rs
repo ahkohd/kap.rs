@@ -3,12 +3,12 @@ use kap::{Kap, KapValue};
 
 #[tokio::main]
 async fn main() {
-  println!("[info]: Basic example, press A");
+  println!("[info]: Basic example, press A twice");
 
   Kap::new()
-    .until(&[KapValue::from(Keycode::A)])
+    .until(&[KapValue::from(Keycode::A)], 2)
     .await
-    .task(|_| println!("[info]: Pressed A"))
+    .task(|record| println!("[info]: Pressed {:?}", record))
     .finally(|_| {
       println!("[info]: Done");
     });
